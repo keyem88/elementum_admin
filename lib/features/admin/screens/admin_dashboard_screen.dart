@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:get/get.dart';
 import '../controller/admin_controller.dart';
 import '../../auth/auth_controller.dart';
@@ -77,6 +78,9 @@ class AdminDashboardScreen extends StatelessWidget {
           _sidebarItem(controller, 'Packs', Icons.card_giftcard),
           _sidebarItem(controller, 'Economy', Icons.monetization_on),
           _sidebarItem(controller, 'Quests', Icons.assignment),
+          _sidebarItem(controller, 'Rewards', Icons.event_available),
+          _sidebarItem(controller, 'Achievements', Icons.emoji_events),
+          _sidebarItem(controller, 'Environment', Icons.wb_sunny),
           _sidebarItem(controller, 'Messaging', Icons.message),
           _sidebarItem(controller, 'Announcements', Icons.campaign),
           const Spacer(),
@@ -133,6 +137,12 @@ class AdminDashboardScreen extends StatelessWidget {
         return _QuestsView(controller: controller);
       case 'Announcements':
         return _AnnouncementsView(controller: controller);
+      case 'Rewards':
+        return _RewardsView(controller: controller);
+      case 'Environment':
+        return _EnvironmentView(controller: controller);
+      case 'Achievements':
+        return _AchievementsView(controller: controller);
       default:
         return Center(
           child: Text(
@@ -1523,9 +1533,23 @@ class _PacksView extends StatelessWidget {
                               ),
                             ],
                           ),
+                          if (pack.hasCooldown) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(Icons.timer, color: Colors.blueAccent, size: 14),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Cooldown: ${pack.cooldownHours}h',
+                                  style: const TextStyle(color: Colors.blueAccent, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           Text(
-                            '${pack.costGold} Gold | ${pack.cardsPerPack} Cards',
+                            '${pack.requiresAd ? 'Watch Ad' : '${pack.costGold} Gold'} | ${pack.cardsPerPack} Cards'
+                            '${pack.purchaseLimit != -1 ? ' | Limit: ${pack.purchaseLimit}' : ''}',
                             style: const TextStyle(color: Colors.orange),
                           ),
                           const SizedBox(height: 8),
@@ -1629,6 +1653,14 @@ class _PacksView extends StatelessWidget {
       text: pack?.cardsPerPack.toString() ?? '3',
     );
     bool isActive = pack?.isActive ?? true;
+    bool requiresAd = pack?.requiresAd ?? false;
+    bool hasCooldown = pack?.hasCooldown ?? false;
+    final cooldownHoursCtrl = TextEditingController(
+      text: pack?.cooldownHours.toString() ?? '24.0',
+    );
+    final purchaseLimitCtrl = TextEditingController(
+      text: pack?.purchaseLimit.toString() ?? '-1',
+    );
 
     String? guaranteedRarity = pack?.guaranteedRarity;
     String? elementFocus = pack?.elementFocus;
@@ -1672,10 +1704,27 @@ class _PacksView extends StatelessWidget {
                       Row(
                         children: [
                           Expanded(
-                            child: _buildTextField(
-                              costCtrl,
-                              'Cost (Gold)',
-                              isNumber: true,
+                            child: TextFormField(
+                              controller: costCtrl,
+                              style: TextStyle(
+                                color: requiresAd ? Colors.white24 : Colors.white,
+                              ),
+                              keyboardType: TextInputType.number,
+                              readOnly: requiresAd,
+                              decoration: InputDecoration(
+                                labelText: 'Cost (Gold)',
+                                labelStyle: const TextStyle(color: Colors.grey),
+                                enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: requiresAd ? Colors.white10 : Colors.white24,
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: requiresAd ? Colors.white10 : Colors.orange,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -1687,6 +1736,12 @@ class _PacksView extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        purchaseLimitCtrl,
+                        'Purchase Limit (-1 = Unlimited)',
+                        isNumber: true,
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String?>(
@@ -1792,6 +1847,50 @@ class _PacksView extends StatelessWidget {
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text(
+                          'Requires Ad View',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: const Text(
+                          'Players watch an ad to unlock this pack (Cost set to 0).',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        value: requiresAd,
+                        activeColor: Colors.orange,
+                        onChanged: (val) {
+                          setState(() {
+                            requiresAd = val;
+                            if (requiresAd) {
+                              costCtrl.text = '0';
+                            }
+                          });
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Has Cooldown',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: const Text(
+                          'Restrict how often this pack can be opened.',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        value: hasCooldown,
+                        activeColor: Colors.orange,
+                        onChanged: (val) => setState(() => hasCooldown = val),
+                      ),
+                      if (hasCooldown)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+                          child: _buildTextField(
+                            cooldownHoursCtrl,
+                            'Cooldown Duration (Hours)',
+                            isNumber: true,
+                          ),
+                        ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
                           'Active in Shop',
                           style: TextStyle(color: Colors.white),
                         ),
@@ -1846,6 +1945,10 @@ class _PacksView extends StatelessWidget {
                         "diamond": int.tryParse(diamondCtrl.text) ?? 0,
                       },
                       isActive: isActive,
+                      requiresAd: requiresAd,
+                      hasCooldown: hasCooldown,
+                      cooldownHours: double.tryParse(cooldownHoursCtrl.text) ?? 0.0,
+                      purchaseLimit: int.tryParse(purchaseLimitCtrl.text) ?? -1,
                     );
                     controller.saveCardPack(newPack);
                     Navigator.pop(ctx);
@@ -4702,3 +4805,848 @@ class _SimulationResultDialog extends StatelessWidget {
     );
   }
 }
+
+class _RewardsView extends StatelessWidget {
+  final AdminController controller;
+  const _RewardsView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Daily Login Rewards',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Configure the rewards for the 7-day login cycle.',
+            style: TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+          const SizedBox(height: 32),
+          Expanded(
+            child: Obx(() {
+              if (controller.dailyRewards.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              return ListView.separated(
+                itemCount: controller.dailyRewards.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final reward = controller.dailyRewards[index];
+                  return _buildRewardCard(context, reward);
+                },
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRewardCard(BuildContext context, AdminDailyReward reward) {
+    IconData icon;
+    Color color;
+
+    switch (reward.rewardType) {
+      case 'gold':
+        icon = Icons.monetization_on;
+        color = Colors.amber;
+        break;
+      case 'xp':
+        icon = Icons.trending_up;
+        color = Colors.blue;
+        break;
+      case 'pack':
+        icon = Icons.card_giftcard;
+        color = Colors.purple;
+        break;
+      default:
+        icon = Icons.help;
+        color = Colors.grey;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 30),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Day ${reward.dayIndex}',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reward.title ?? 'No Title',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  reward.rewardType == 'pack'
+                      ? 'Reward: Card Pack'
+                      : 'Reward: ${reward.amount} ${reward.rewardType.toUpperCase()}',
+                  style: TextStyle(color: color, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => _showRewardDialog(context, reward),
+            icon: const Icon(Icons.edit, size: 18),
+            label: const Text('Edit'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2C2C2C),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRewardDialog(BuildContext context, AdminDailyReward reward) {
+    // ... existierender Code ...
+    final titleCtrl = TextEditingController(text: reward.title ?? '');
+    final amountCtrl = TextEditingController(text: reward.amount.toString());
+    String rewardType = reward.rewardType;
+    String? packId = reward.packId;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text('Edit Day ${reward.dayIndex} Reward'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Title',
+                    labelStyle: TextStyle(color: Colors.grey),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: rewardType,
+                  dropdownColor: const Color(0xFF2C2C2C),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Reward Type'),
+                  items: const [
+                    DropdownMenuItem(value: 'gold', child: Text('Gold')),
+                    DropdownMenuItem(value: 'xp', child: Text('Experience')),
+                    DropdownMenuItem(value: 'pack', child: Text('Card Pack')),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => rewardType = val);
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (rewardType != 'pack')
+                  TextField(
+                    controller: amountCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      labelStyle: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                else
+                  Obx(() {
+                    final packs = controller.cardPacks;
+                    return DropdownButtonFormField<String?>(
+                      value: packId,
+                      dropdownColor: const Color(0xFF2C2C2C),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(labelText: 'Select Pack'),
+                      items: packs.map((p) {
+                        return DropdownMenuItem(value: p.id, child: Text(p.name));
+                      }).toList(),
+                      onChanged: (val) => setState(() => packId = val),
+                    );
+                  }),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                reward.title = titleCtrl.text;
+                reward.rewardType = rewardType;
+                reward.amount = int.tryParse(amountCtrl.text) ?? 0;
+                reward.packId = packId;
+                controller.saveDailyReward(reward);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AchievementsView extends StatelessWidget {
+  final AdminController controller;
+  const _AchievementsView({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Achievements',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _showAchievementDialog(context),
+                icon: const Icon(Icons.add),
+                label: const Text('New Achievement'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          Expanded(
+            child: Obx(() {
+              if (controller.achievements.isEmpty) {
+                return const Center(
+                  child: Text('No achievements found',
+                      style: TextStyle(color: Colors.grey)),
+                );
+              }
+              return ListView.separated(
+                itemCount: controller.achievements.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final ach = controller.achievements[index];
+                  return _buildAchievementCard(context, ach);
+                },
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAchievementCard(BuildContext context, AdminAchievement ach) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: ach.isActive ? Colors.orange.withOpacity(0.3) : Colors.grey.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _iconContainer(ach.icon, ach.isActive),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        ach.nameDe,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!ach.isActive)
+                      const Text(
+                        'INACTIVE',
+                        style: TextStyle(color: Colors.red, fontSize: 10),
+                      ),
+                  ],
+                ),
+                Text(
+                  ach.category.toUpperCase(),
+                  style: const TextStyle(color: Colors.orange, fontSize: 10),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  ach.descriptionDe,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 18, color: Colors.blue),
+                      onPressed: () => _showAchievementDialog(context, achievement: ach),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                      onPressed: () => _showDeleteConfirm(context, ach),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconContainer(String iconName, bool active) {
+    IconData iconData;
+    switch (iconName) {
+      case 'emoji_events': iconData = Icons.emoji_events; break;
+      case 'style': iconData = Icons.style; break;
+      case 'local_fire_department': iconData = Icons.local_fire_department; break;
+      case 'shield': iconData = Icons.shield; break;
+      case 'stars': iconData = Icons.stars; break;
+      case 'military_tech': iconData = Icons.military_tech; break;
+      case 'trending_up': iconData = Icons.trending_up; break;
+      case 'groups': iconData = Icons.groups; break;
+      default: iconData = Icons.emoji_events;
+    }
+
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: active ? Colors.orange.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(iconData, color: active ? Colors.orange : Colors.grey),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, AdminAchievement ach) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Delete Achievement'),
+        content: Text('Are you sure you want to delete "${ach.nameDe}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              controller.deleteAchievement(ach.id);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAchievementDialog(BuildContext context, {AdminAchievement? achievement}) {
+    final isNew = achievement == null;
+    final nameDeCtrl = TextEditingController(text: achievement?.nameDe ?? '');
+    final nameEnCtrl = TextEditingController(text: achievement?.nameEn ?? '');
+    final descDeCtrl = TextEditingController(text: achievement?.descriptionDe ?? '');
+    final descEnCtrl = TextEditingController(text: achievement?.descriptionEn ?? '');
+    
+    // Structured Criteria
+    String criteriaType = achievement?.criteria['type'] ?? 'wins';
+    final criteriaTargetCtrl = TextEditingController(
+      text: (achievement?.criteria['target'] ?? 1).toString(),
+    );
+    final customCriteriaCtrl = TextEditingController(
+      text: achievement != null ? jsonEncode(achievement.criteria) : '',
+    );
+    bool useRawJson = false;
+
+    String icon = achievement?.icon ?? 'emoji_events';
+    String category = achievement?.category ?? 'general';
+    bool isActive = achievement?.isActive ?? true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          title: Text(isNew ? 'New Achievement' : 'Edit Achievement'),
+          content: SizedBox(
+            width: 600,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(nameDeCtrl, 'Name (DE)'),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildTextField(nameEnCtrl, 'Name (EN)'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTextField(descDeCtrl, 'Description (DE)', maxLines: 2),
+                  const SizedBox(height: 16),
+                  _buildTextField(descEnCtrl, 'Description (EN)', maxLines: 2),
+                  const SizedBox(height: 24),
+                  
+                  // Criteria Section
+                  Row(
+                    children: [
+                      const Text('Condition / Criteria', 
+                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => setState(() => useRawJson = !useRawJson),
+                        child: Text(useRawJson ? 'Switch to Simple' : 'Switch to Raw JSON',
+                          style: const TextStyle(fontSize: 10)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (!useRawJson)
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButtonFormField<String>(
+                            value: criteriaType,
+                            dropdownColor: const Color(0xFF2C2C2C),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(labelText: 'Type'),
+                            items: const [
+                              DropdownMenuItem(value: 'wins', child: Text('Total Wins')),
+                              DropdownMenuItem(value: 'cards', child: Text('Cards Owned')),
+                              DropdownMenuItem(value: 'streak', child: Text('Login Streak')),
+                              DropdownMenuItem(value: 'flawless_win', child: Text('Flawless Wins')),
+                              DropdownMenuItem(value: 'level', child: Text('Player Level')),
+                              DropdownMenuItem(value: 'packs_opened', child: Text('Packs Opened')),
+                            ],
+                            onChanged: (val) => setState(() => criteriaType = val!),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildTextField(criteriaTargetCtrl, 'Target Value', isNumber: true),
+                        ),
+                      ],
+                    )
+                  else
+                    _buildTextField(customCriteriaCtrl, 'Criteria (JSON)', maxLines: 2),
+                  
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: category,
+                          dropdownColor: const Color(0xFF2C2C2C),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'Category'),
+                          items: const [
+                            DropdownMenuItem(value: 'general', child: Text('General')),
+                            DropdownMenuItem(value: 'combat', child: Text('Combat')),
+                            DropdownMenuItem(value: 'collection', child: Text('Collection')),
+                            DropdownMenuItem(value: 'social', child: Text('Social')),
+                          ],
+                          onChanged: (val) => setState(() => category = val!),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: icon,
+                          dropdownColor: const Color(0xFF2C2C2C),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'Icon'),
+                          items: const [
+                            DropdownMenuItem(value: 'emoji_events', child: Text('Trophy')),
+                            DropdownMenuItem(value: 'style', child: Text('Cards')),
+                            DropdownMenuItem(value: 'local_fire_department', child: Text('Fire/Streak')),
+                            DropdownMenuItem(value: 'shield', child: Text('Shield')),
+                            DropdownMenuItem(value: 'stars', child: Text('Stars')),
+                            DropdownMenuItem(value: 'military_tech', child: Text('Medal')),
+                            DropdownMenuItem(value: 'trending_up', child: Text('Graph')),
+                            DropdownMenuItem(value: 'groups', child: Text('Users')),
+                          ],
+                          onChanged: (val) => setState(() => icon = val!),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Is Active', style: TextStyle(color: Colors.white)),
+                    value: isActive,
+                    activeColor: Colors.orange,
+                    onChanged: (val) => setState(() => isActive = val),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Map<String, dynamic> criteria = {};
+                if (useRawJson) {
+                  try {
+                    criteria = jsonDecode(customCriteriaCtrl.text);
+                  } catch (e) {
+                    Get.snackbar('Fehler', 'Ungültiges JSON-Format für Criteria');
+                    return;
+                  }
+                } else {
+                  criteria = {
+                    'type': criteriaType,
+                    'target': int.tryParse(criteriaTargetCtrl.text) ?? 0,
+                  };
+                }
+
+                final ach = AdminAchievement(
+                  id: isNew ? 'temp_${DateTime.now().millisecondsSinceEpoch}' : achievement.id,
+                  nameDe: nameDeCtrl.text,
+                  nameEn: nameEnCtrl.text,
+                  descriptionDe: descDeCtrl.text,
+                  descriptionEn: descEnCtrl.text,
+                  icon: icon,
+                  category: category,
+                  criteria: criteria,
+                  isActive: isActive,
+                  createdAt: achievement?.createdAt ?? DateTime.now(),
+                );
+                controller.saveAchievement(ach);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController ctrl, String label, {int maxLines = 1, bool isNumber = false}) {
+    return TextField(
+      controller: ctrl,
+      maxLines: maxLines,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.grey),
+        enabledBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.white24),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderSide: BorderSide(color: Colors.orange),
+        ),
+      ),
+    );
+  }
+}
+
+class _EnvironmentView extends StatefulWidget {
+  final AdminController controller;
+  const _EnvironmentView({required this.controller});
+
+  @override
+  State<_EnvironmentView> createState() => _EnvironmentViewState();
+}
+
+class _EnvironmentViewState extends State<_EnvironmentView> {
+  late Map<String, dynamic> envRules;
+  bool isLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRules();
+  }
+
+  void _loadRules() {
+    final raw = widget.controller.balancingConfig['env_mechanics_rules'];
+    if (raw != null) {
+      try {
+        if (raw is String) {
+          envRules = Map<String, dynamic>.from(jsonDecode(raw));
+        } else {
+          envRules = Map<String, dynamic>.from(raw);
+        }
+      } catch (e) {
+        envRules = {};
+      }
+    } else {
+      envRules = {};
+    }
+    setState(() => isLoaded = true);
+  }
+
+  void _saveRules() {
+    final jsonStr = jsonEncode(envRules);
+    widget.controller.balancingConfig['env_mechanics_rules'] = jsonStr;
+    widget.controller.changedKeys.add('env_mechanics_rules');
+    widget.controller.saveBalancingConfig();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isLoaded) return const Center(child: CircularProgressIndicator());
+
+    return DefaultTabController(
+      length: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Environment Mechanics',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _saveRules,
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save All Changes'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const TabBar(
+              isScrollable: true,
+              indicatorColor: Colors.orange,
+              labelColor: Colors.orange,
+              unselectedLabelColor: Colors.grey,
+              tabs: [
+                Tab(text: 'Biomes'),
+                Tab(text: 'Time of Day'),
+                Tab(text: 'Moon Phases'),
+                Tab(text: 'Seasons'),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildCategoryList('biomes'),
+                  _buildCategoryList('time_of_day'),
+                  _buildCategoryList('moon_phases'),
+                  _buildCategoryList('seasons'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryList(String category) {
+    final Map<String, dynamic> items = envRules[category] ?? {};
+    final keys = items.keys.toList();
+
+    return ListView.builder(
+      itemCount: keys.length,
+      itemBuilder: (context, index) {
+        final key = keys[index];
+        final data = Map<String, dynamic>.from(items[key]);
+        return _buildRuleCard(category, key, data);
+      },
+    );
+  }
+
+  Widget _buildRuleCard(String category, String key, Map<String, dynamic> data) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            key.replaceAll('_', ' ').toUpperCase(),
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 20,
+            runSpacing: 20,
+            children: [
+              if (data.containsKey('target_element'))
+                _buildDropdown(
+                  'Target Element',
+                  data['target_element'],
+                  ['Feuer', 'Wasser', 'Erde', 'Luft'],
+                  (val) => setState(() => data['target_element'] = val),
+                ),
+              if (data.containsKey('target_archetype'))
+                _buildDropdown(
+                  'Target Archetype',
+                  data['target_archetype'],
+                  ['Stürmer', 'Allrounder', 'Wall', 'Tänzer'],
+                  (val) => setState(() => data['target_archetype'] = val),
+                ),
+              _buildDropdown(
+                'Stat',
+                data['stat'],
+                [
+                  'atk',
+                  'def',
+                  'agi',
+                  'all',
+                  'atk_percent',
+                  'def_percent',
+                  'agi_percent',
+                  'all_percent'
+                ],
+                (val) => setState(() => data['stat'] = val),
+              ),
+              _buildNumberField(
+                'Value',
+                data['value'].toString(),
+                (val) => setState(() => data['value'] = int.tryParse(val) ?? 0),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropdown(
+    String label,
+    String? value,
+    List<String> options,
+    Function(String) onChanged,
+  ) {
+    return SizedBox(
+      width: 200,
+      child: DropdownButtonFormField<String>(
+        value: value,
+        dropdownColor: const Color(0xFF2C2C2C),
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.grey),
+          enabledBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.white24),
+          ),
+        ),
+        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+        onChanged: (val) {
+          if (val != null) onChanged(val);
+        },
+      ),
+    );
+  }
+
+  Widget _buildNumberField(String label, String value, Function(String) onChanged) {
+    return SizedBox(
+      width: 100,
+      child: TextFormField(
+        initialValue: value,
+        keyboardType: TextInputType.number,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.grey),
+          enabledBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.white24),
+          ),
+        ),
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+

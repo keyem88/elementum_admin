@@ -168,6 +168,10 @@ class AdminCardPack {
   String? elementFocus;
   Map<String, dynamic> dropRates;
   bool isActive;
+  bool requiresAd;
+  bool hasCooldown;
+  double cooldownHours;
+  int purchaseLimit;
 
   AdminCardPack({
     required this.id,
@@ -179,6 +183,10 @@ class AdminCardPack {
     this.elementFocus,
     required this.dropRates,
     this.isActive = true,
+    this.requiresAd = false,
+    this.hasCooldown = false,
+    this.cooldownHours = 0.0,
+    this.purchaseLimit = -1,
   });
 
   factory AdminCardPack.fromJson(Map<String, dynamic> json) {
@@ -192,6 +200,10 @@ class AdminCardPack {
       elementFocus: json['element_focus'],
       dropRates: json['drop_rates_json'] ?? {},
       isActive: json['is_active'] ?? true,
+      requiresAd: json['requires_ad'] ?? false,
+      hasCooldown: json['has_cooldown'] ?? false,
+      cooldownHours: (json['cooldown_hours'] ?? 0).toDouble(),
+      purchaseLimit: json['purchase_limit'] ?? -1,
     );
   }
 
@@ -205,6 +217,105 @@ class AdminCardPack {
       'element_focus': elementFocus,
       'drop_rates_json': dropRates,
       'is_active': isActive,
+      'requires_ad': requiresAd,
+      'has_cooldown': hasCooldown,
+      'cooldown_hours': cooldownHours,
+      'purchase_limit': purchaseLimit,
+    };
+  }
+}
+
+class AdminDailyReward {
+  final int dayIndex;
+  String rewardType; // 'xp', 'gold', 'pack'
+  int amount;
+  String? packId;
+  String? title;
+
+  AdminDailyReward({
+    required this.dayIndex,
+    required this.rewardType,
+    this.amount = 0,
+    this.packId,
+    this.title,
+  });
+
+  factory AdminDailyReward.fromJson(Map<String, dynamic> json) {
+    return AdminDailyReward(
+      dayIndex: json['day_index'],
+      rewardType: json['reward_type'],
+      amount: json['amount'] ?? 0,
+      packId: json['pack_id'],
+      title: json['title'],
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'reward_type': rewardType,
+      'amount': amount,
+      'pack_id': packId,
+      'title': title,
+    };
+  }
+}
+
+class AdminAchievement {
+  final String id;
+  String nameDe;
+  String nameEn;
+  String descriptionDe;
+  String descriptionEn;
+  String icon;
+  String category;
+  Map<String, dynamic> criteria;
+  bool isActive;
+  Map<String, dynamic> translations;
+  DateTime createdAt;
+
+  AdminAchievement({
+    required this.id,
+    required this.nameDe,
+    required this.nameEn,
+    required this.descriptionDe,
+    required this.descriptionEn,
+    this.icon = 'emoji_events',
+    this.category = 'general',
+    required this.criteria,
+    this.isActive = true,
+    this.translations = const {},
+    required this.createdAt,
+  });
+
+  factory AdminAchievement.fromJson(Map<String, dynamic> json) {
+    return AdminAchievement(
+      id: json['id'],
+      nameDe: json['name_de'] ?? '',
+      nameEn: json['name_en'] ?? '',
+      descriptionDe: json['description_de'] ?? '',
+      descriptionEn: json['description_en'] ?? '',
+      icon: json['icon'] ?? 'emoji_events',
+      category: json['category'] ?? 'general',
+      criteria: json['criteria'] ?? {},
+      isActive: json['is_active'] ?? true,
+      translations: json['translations'] ?? {},
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name_de': nameDe,
+      'name_en': nameEn,
+      'description_de': descriptionDe,
+      'description_en': descriptionEn,
+      'icon': icon,
+      'category': category,
+      'criteria': criteria,
+      'is_active': isActive,
+      'translations': translations,
     };
   }
 }
@@ -579,6 +690,8 @@ class AdminController extends GetxController {
   final cardTemplates = <AdminCardTemplate>[].obs;
   final announcements = <AdminAnnouncement>[].obs;
   final quests = <AdminQuest>[].obs;
+  final dailyRewards = <AdminDailyReward>[].obs;
+  final achievements = <AdminAchievement>[].obs;
   final extendedStats = <String, dynamic>{}.obs;
 
   @override
@@ -593,6 +706,8 @@ class AdminController extends GetxController {
     _loadAnnouncements();
     _loadPushNotifications();
     _loadPushPresets();
+    _loadDailyRewards();
+    _loadAchievements();
     _loadExtendedAnalytics();
   }
 
@@ -1478,6 +1593,84 @@ class AdminController extends GetxController {
       debugPrint('✅ Manual sync status updated for $tableName');
     } catch (e) {
       debugPrint('⚠️ Failed to update sync status for $tableName: $e');
+    }
+  }
+
+  Future<void> _loadDailyRewards() async {
+    try {
+      final res = await SupabaseService.to.client
+          .from('daily_reward_schedule')
+          .select()
+          .order('day_index', ascending: true);
+      dailyRewards.assignAll(
+        (res as List)
+            .map((r) => AdminDailyReward.fromJson(Map<String, dynamic>.from(r)))
+            .toList(),
+      );
+    } catch (e) {
+      debugPrint('❌ Error loading daily rewards: $e');
+    }
+  }
+
+  Future<void> saveDailyReward(AdminDailyReward reward) async {
+    try {
+      await SupabaseService.to.client
+          .from('daily_reward_schedule')
+          .update(reward.toJson())
+          .eq('day_index', reward.dayIndex);
+      
+      _loadDailyRewards();
+      Get.snackbar('Erfolg', 'Belohnung für Tag ${reward.dayIndex} gespeichert');
+    } catch (e) {
+      debugPrint('❌ Error saving daily reward: $e');
+      Get.snackbar('Fehler', 'Konnte Belohnung nicht speichern');
+    }
+  }
+
+  Future<void> _loadAchievements() async {
+    try {
+      final res = await SupabaseService.to.client
+          .from('achievements')
+          .select()
+          .order('created_at', ascending: false);
+      achievements.assignAll(
+        (res as List)
+            .map((r) => AdminAchievement.fromJson(Map<String, dynamic>.from(r)))
+            .toList(),
+      );
+    } catch (e) {
+      debugPrint('❌ Error loading achievements: $e');
+    }
+  }
+
+  Future<void> saveAchievement(AdminAchievement achievement) async {
+    try {
+      if (achievement.id.startsWith('temp_')) {
+        await SupabaseService.to.client
+            .from('achievements')
+            .insert(achievement.toJson());
+      } else {
+        await SupabaseService.to.client
+            .from('achievements')
+            .update(achievement.toJson())
+            .eq('id', achievement.id);
+      }
+      _loadAchievements();
+      Get.snackbar('Erfolg', 'Achievement gespeichert');
+    } catch (e) {
+      debugPrint('❌ Error saving achievement: $e');
+      Get.snackbar('Fehler', 'Konnte Achievement nicht speichern');
+    }
+  }
+
+  Future<void> deleteAchievement(String id) async {
+    try {
+      await SupabaseService.to.client.from('achievements').delete().eq('id', id);
+      _loadAchievements();
+      Get.snackbar('Erfolg', 'Achievement gelöscht');
+    } catch (e) {
+      debugPrint('❌ Error deleting achievement: $e');
+      Get.snackbar('Fehler', 'Konnte Achievement nicht löschen');
     }
   }
 }
