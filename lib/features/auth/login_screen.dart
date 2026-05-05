@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'auth_controller.dart';
+import '../../core/config/app_config.dart';
+import '../../core/backend/supabase_service.dart';
 
 class LoginScreen extends StatelessWidget {
   LoginScreen({super.key});
@@ -34,6 +36,75 @@ class LoginScreen extends StatelessWidget {
               const Text(
                 'Elementum Admin',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const SizedBox(height: 24),
+              
+              // Environment Switcher
+              StatefulBuilder(
+                builder: (context, setLocalState) {
+                  final isDev = AppConfig.current.isDev;
+                  return Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              AppConfig.setEnvironment(Environment.dev);
+                              SupabaseService.to.updateConfig();
+                              setLocalState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isDev ? Colors.orange : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'DEV',
+                                  style: TextStyle(
+                                    color: isDev ? Colors.white : Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              AppConfig.setEnvironment(Environment.prod);
+                              SupabaseService.to.updateConfig();
+                              setLocalState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                color: !isDev ? Colors.red : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'PROD',
+                                  style: TextStyle(
+                                    color: !isDev ? Colors.white : Colors.grey,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 32),
               TextField(

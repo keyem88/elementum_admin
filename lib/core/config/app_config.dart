@@ -13,6 +13,10 @@ class AppConfig {
 
   static late AppConfig current;
 
+  static void setEnvironment(Environment env) {
+    current = env == Environment.prod ? prod() : dev();
+  }
+
   // Configuration for DEV
   static AppConfig dev() {
     return AppConfig(
