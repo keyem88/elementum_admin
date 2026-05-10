@@ -172,6 +172,7 @@ class AdminCardPack {
   bool hasCooldown;
   double cooldownHours;
   int purchaseLimit;
+  bool isStarter;
 
   AdminCardPack({
     required this.id,
@@ -187,6 +188,7 @@ class AdminCardPack {
     this.hasCooldown = false,
     this.cooldownHours = 0.0,
     this.purchaseLimit = -1,
+    this.isStarter = false,
   });
 
   factory AdminCardPack.fromJson(Map<String, dynamic> json) {
@@ -204,6 +206,7 @@ class AdminCardPack {
       hasCooldown: json['has_cooldown'] ?? false,
       cooldownHours: (json['cooldown_hours'] ?? 0).toDouble(),
       purchaseLimit: json['purchase_limit'] ?? -1,
+      isStarter: json['is_starter'] ?? false,
     );
   }
 
@@ -221,6 +224,7 @@ class AdminCardPack {
       'has_cooldown': hasCooldown,
       'cooldown_hours': cooldownHours,
       'purchase_limit': purchaseLimit,
+      'is_starter': isStarter,
     };
   }
 }
@@ -1451,9 +1455,23 @@ class AdminController extends GetxController {
     }
 
     try {
-      debugPrint(
-        '📣 Attempting to send push: Title="${title}", env=${AppConfig.current.environment}',
-      );
+      // 1. Validation
+      if (!isGlobal && playerId == null && (filters == null || filters.isEmpty)) {
+        Get.snackbar(
+          'Error',
+          'No target audience selected. Please choose Global, Filter, or a Specific Player.',
+          backgroundColor: Colors.orange,
+          colorText: Colors.black,
+        );
+        return;
+      }
+
+      // Safe logging for web browsers
+      try {
+        debugPrint('📣 Push Request -> Global: $isGlobal, Player: $playerId, Filters: ${filters?.keys.join(',')}');
+      } catch (e) {
+        debugPrint('📣 Attempting to send push...');
+      }
 
       final response = await SupabaseService.to.client.functions.invoke(
         'send-push',
@@ -1464,7 +1482,7 @@ class AdminController extends GetxController {
           'is_global': isGlobal,
           'filters': filters,
         },
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.status == 200) {
         Get.snackbar(

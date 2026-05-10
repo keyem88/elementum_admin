@@ -1512,14 +1512,41 @@ class _PacksView extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Expanded(
-                                child: Text(
-                                  pack.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        pack.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (pack.isStarter) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.purple.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                              color: Colors.purple.withOpacity(0.5)),
+                                        ),
+                                        child: const Text(
+                                          'STARTER',
+                                          style: TextStyle(
+                                            color: Colors.purpleAccent,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                               Icon(
@@ -1661,6 +1688,7 @@ class _PacksView extends StatelessWidget {
     final purchaseLimitCtrl = TextEditingController(
       text: pack?.purchaseLimit.toString() ?? '-1',
     );
+    bool isStarter = pack?.isStarter ?? false;
 
     String? guaranteedRarity = pack?.guaranteedRarity;
     String? elementFocus = pack?.elementFocus;
@@ -1898,6 +1926,20 @@ class _PacksView extends StatelessWidget {
                         activeColor: Colors.orange,
                         onChanged: (val) => setState(() => isActive = val),
                       ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text(
+                          'Is Starter Pack',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: const Text(
+                          'Show this pack as a starter option for new players.',
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                        value: isStarter,
+                        activeColor: Colors.purpleAccent,
+                        onChanged: (val) => setState(() => isStarter = val),
+                      ),
                     ],
                   ),
                 ),
@@ -1949,6 +1991,7 @@ class _PacksView extends StatelessWidget {
                       hasCooldown: hasCooldown,
                       cooldownHours: double.tryParse(cooldownHoursCtrl.text) ?? 0.0,
                       purchaseLimit: int.tryParse(purchaseLimitCtrl.text) ?? -1,
+                      isStarter: isStarter,
                     );
                     controller.saveCardPack(newPack);
                     Navigator.pop(ctx);
@@ -3469,6 +3512,7 @@ class _AnnouncementsView extends StatelessWidget {
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -3909,9 +3953,20 @@ class _MessagingViewState extends State<_MessagingView> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
-                      onPressed: _send,
-                      icon: const Icon(Icons.send),
-                      label: const Text('SEND NOTIFICATION'),
+                      onPressed: _isSending ? null : _send,
+                      icon: _isSending
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.black,
+                              ),
+                            )
+                          : const Icon(Icons.send),
+                      label: Text(
+                        _isSending ? 'SENDING...' : 'SEND NOTIFICATION',
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.black,
@@ -4052,22 +4107,45 @@ class _MessagingViewState extends State<_MessagingView> {
   }
 
   String _summarizeFilters(Map<String, dynamic> filters) {
+    if (filters.isEmpty) return 'Global Broadcast';
+    
     List<String> parts = [];
+    
+    // Level
     if (filters['minLevel'] != null || filters['maxLevel'] != null) {
-      parts.add(
-          'Lvl: ${filters['minLevel'] ?? 1}-${filters['maxLevel'] ?? '?'}');
+      final min = filters['minLevel'] ?? 1;
+      final max = filters['maxLevel'] ?? 'Max';
+      parts.add('Lvl $min-$max');
     }
+    
+    // Elements
     final el = filters['elements'] as List?;
-    if (el != null && el.isNotEmpty) parts.add('Elements: ${el.join(',')}');
+    if (el != null && el.isNotEmpty) {
+      parts.add('Elements: ${el.map((e) => e.toString().toUpperCase()).join(',')}');
+    }
     
+    // Languages
     final ln = filters['languages'] as List?;
-    if (ln != null && ln.isNotEmpty) parts.add('Langs: ${ln.join(',')}');
+    if (ln != null && ln.isNotEmpty) {
+      parts.add('Langs: ${ln.map((l) => l.toString().toUpperCase()).join(',')}');
+    }
     
+    // Anonymous status
     if (filters['isAnonymous'] != null) {
-      parts.add(filters['isAnonymous'] == true ? 'Guests only' : 'Registered only');
+      parts.add(filters['isAnonymous'] == true ? 'Guests' : 'Registered');
+    }
+    
+    // Banned status
+    if (filters['isBanned'] == true) {
+      parts.add('BANNED USERS ONLY');
     }
 
-    return parts.isEmpty ? 'Targeted' : parts.join(' • ');
+    // Last Active
+    if (filters['lastActiveDays'] != null) {
+      parts.add('Active in ${filters['lastActiveDays']}d');
+    }
+
+    return parts.isEmpty ? 'Filtered Group' : parts.join(' • ');
   }
 
   Widget _buildFeedbackTab() {
@@ -4548,36 +4626,48 @@ class _MessagingViewState extends State<_MessagingView> {
     );
   }
 
-  void _send() {
+  bool _isSending = false;
+
+  void _send() async {
     if (titleCtrl.text.isEmpty || bodyCtrl.text.isEmpty) {
       Get.snackbar('Error', 'Please enter title and body');
       return;
     }
 
-    Map<String, dynamic>? filters;
+    if (_isSending) return;
 
-    if (targetMode == 'filtered') {
-      filters = {
-        'minLevel': minLevel,
-        'maxLevel': maxLevel,
-        'elements': selectedElements,
-        'languages': selectedLanguages,
-        'isAnonymous': isAnonymous,
-        'lastActiveDays': lastActiveDays,
-        'isBanned': isBanned,
-      };
+    setState(() => _isSending = true);
+
+    try {
+      Map<String, dynamic>? filters;
+
+      if (targetMode == 'filtered') {
+        filters = {
+          'minLevel': minLevel,
+          'maxLevel': maxLevel,
+          'elements': selectedElements,
+          'languages': selectedLanguages,
+          'isAnonymous': isAnonymous,
+          'lastActiveDays': lastActiveDays,
+          'isBanned': isBanned,
+        };
+      }
+
+      await widget.controller.sendPushNotification(
+        title: titleCtrl.text,
+        body: bodyCtrl.text,
+        playerId: targetMode == 'specific' ? selectedPlayerId : null,
+        isGlobal: targetMode == 'global',
+        filters: filters,
+      );
+
+      titleCtrl.clear();
+      bodyCtrl.clear();
+    } catch (e) {
+      debugPrint('❌ UI Error sending push: $e');
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
-
-    widget.controller.sendPushNotification(
-      title: titleCtrl.text,
-      body: bodyCtrl.text,
-      playerId: targetMode == 'specific' ? selectedPlayerId : null,
-      isGlobal: targetMode == 'global',
-      filters: filters,
-    );
-
-    titleCtrl.clear();
-    bodyCtrl.clear();
   }
 
   Widget _buildLocalField(
